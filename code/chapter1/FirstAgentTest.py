@@ -54,7 +54,11 @@ def get_weather(city: str) -> str:
 
 import os
 from tavily import TavilyClient
-
+from dotenv import load_dotenv
+from environs import Env
+load_dotenv()
+# env = Env()
+# env.read_env()
 def get_attraction(city: str, weather: str) -> str:
     """
     根据城市和天气，使用Tavily Search API搜索并返回优化后的景点推荐。
@@ -63,6 +67,7 @@ def get_attraction(city: str, weather: str) -> str:
     # 从环境变量或主程序配置中获取API密钥
     api_key = os.environ.get("TAVILY_API_KEY") # 推荐方式
     # 或者，我们可以在主循环中传入，如此处代码所示
+    print(api_key)
 
     if not api_key:
         return "错误：未配置TAVILY_API_KEY。"
@@ -111,6 +116,7 @@ class OpenAICompatibleClient:
     def __init__(self, model: str, api_key: str, base_url: str):
         self.model = model
         self.client = OpenAI(api_key=api_key, base_url=base_url)
+        print(f"OpenAI客户端初始化完成: model={model}, base_url={base_url}")
 
     def generate(self, prompt: str, system_prompt: str) -> str:
         """调用LLM API来生成回应。"""
@@ -120,27 +126,58 @@ class OpenAICompatibleClient:
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': prompt}
             ]
+            print(f"发送请求到模型: {self.model}")
+            print(f"消息内容: {messages}")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                stream=False
+                stream=False,
+                timeout=30  # 添加30秒超时
             )
+            print(f"收到API响应: {type(response)}")
+            
+            # 更安全地检查响应结构
+            if response is None:
+                print("API返回空响应")
+                return "错误：API返回空响应"
+                
+            if not hasattr(response, 'choices'):
+                print(f"API响应格式错误，缺少choices字段: {response}")
+                return "错误：API响应格式不正确"
+                
+            if len(response.choices) == 0:
+                print("API返回空的choices数组")
+                return "错误：API未返回任何选择"
+                
+            if not hasattr(response.choices[0], 'message'):
+                print(f"API响应格式错误，choice中缺少message字段: {response.choices[0]}")
+                return "错误：API响应格式不正确"
+                
+            if not hasattr(response.choices[0].message, 'content'):
+                print(f"API响应格式错误，message中缺少content字段: {response.choices[0].message}")
+                return "错误：API响应内容为空"
+                
             answer = response.choices[0].message.content
-            print("大语言模型响应成功。")
+            print("模型回复:", answer)
             return answer
+            
         except Exception as e:
             print(f"调用LLM API时发生错误: {e}")
-            return "错误：调用语言模型服务时出错。"
+            import traceback
+            traceback.print_exc()
+            return f"错误：调用语言模型服务时出错 - {str(e)}"
+
 
 import re
 
 # --- 1. 配置LLM客户端 ---
 # 请根据您使用的服务，将这里替换成对应的凭证和地址
-API_KEY = "YOUR_API_KEY"
-BASE_URL = "YOUR_BASE_URL"
-MODEL_ID = "YOUR_MODEL_ID"
-os.environ['TAVILY_API_KEY'] = "YOUR_TAVILY_API_KEY"
+API_KEY = "sk-uxiFGtc00ygZXX6pHDwhH1wrzyubOOvBhHjPaPuYgpFg8e9r"
+BASE_URL = "https://sg.uiuiapi.com"
+MODEL_ID = "chatgpt-4o-latest"
+# os.environ['TAVILY_API_KEY'] = "YOUR_TAVILY_API_KEY"
 
+print(f"初始化LLM客户端: model={MODEL_ID}, base_url={BASE_URL}")
 llm = OpenAICompatibleClient(
     model=MODEL_ID,
     api_key=API_KEY,
@@ -173,13 +210,31 @@ for i in range(5): # 设置最大循环次数
     action_str = action_match.group(1).strip()
 
     if action_str.startswith("finish"):
-        final_answer = re.search(r'finish\(answer="(.*)"\)', action_str).group(1)
-        print(f"任务完成，最终答案: {final_answer}")
+        finish_match = re.search(r'finish\(answer="((?:[^"\\]|\\.)*)"\)', action_str)
+        if finish_match:
+            final_answer = finish_match.group(1)
+            # 处理转义字符
+            final_answer = final_answer.replace('\\"', '"').replace('\\n', '\n')
+            print(f"任务完成，最终答案: {final_answer}")
+        else:
+            print(f"无法解析finish动作: {action_str}")
         break
     
-    tool_name = re.search(r"(\w+)\(", action_str).group(1)
-    args_str = re.search(r"\((.*)\)", action_str).group(1)
-    kwargs = dict(re.findall(r'(\w+)="([^"]*)"', args_str))
+    # 更安全地提取工具名和参数
+    tool_match = re.search(r"(\w+)\s*\((.*)\)", action_str)
+    if not tool_match:
+        print(f"无法解析工具调用: {action_str}")
+        break
+        
+    tool_name = tool_match.group(1)
+    args_str = tool_match.group(2)
+    
+    # 更安全地解析参数
+    kwargs = {}
+    # 匹配参数格式 key="value"
+    args_matches = re.findall(r'(\w+)="([^"]*)"', args_str)
+    for key, value in args_matches:
+        kwargs[key] = value
 
     if tool_name in available_tools:
         observation = available_tools[tool_name](**kwargs)
