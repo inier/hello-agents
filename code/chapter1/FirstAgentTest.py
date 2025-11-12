@@ -54,26 +54,29 @@ def get_weather(city: str) -> str:
 
 import os
 from tavily import TavilyClient
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
+# config = load_dotenv(".env")
+# print(config)
+
 from environs import Env
-load_dotenv()
-# env = Env()
-# env.read_env()
+env = Env()
+env.read_env()
+
 def get_attraction(city: str, weather: str) -> str:
     """
     根据城市和天气，使用Tavily Search API搜索并返回优化后的景点推荐。
     """
 
     # 从环境变量或主程序配置中获取API密钥
-    api_key = os.environ.get("TAVILY_API_KEY") # 推荐方式
+    tavily_api_key = env.str("TAVILY_API_KEY") # 推荐方式
     # 或者，我们可以在主循环中传入，如此处代码所示
-    print(api_key)
+    print(tavily_api_key)
 
-    if not api_key:
+    if not tavily_api_key:
         return "错误：未配置TAVILY_API_KEY。"
 
     # 2. 初始化Tavily客户端
-    tavily = TavilyClient(api_key=api_key)
+    tavily = TavilyClient(api_key=tavily_api_key)
     
     # 3. 构造一个精确的查询
     query = f"'{city}' 在'{weather}'天气下最值得去的旅游景点推荐及理由"
@@ -172,9 +175,14 @@ import re
 
 # --- 1. 配置LLM客户端 ---
 # 请根据您使用的服务，将这里替换成对应的凭证和地址
-API_KEY = "sk-uxiFGtc00ygZXX6pHDwhH1wrzyubOOvBhHjPaPuYgpFg8e9r"
-BASE_URL = "https://sg.uiuiapi.com"
-MODEL_ID = "chatgpt-4o-latest"
+# API_KEY = "sk-uxiFGtc00ygZXX6pHDwhH1wrzyubOOvBhHjPaPuYgpFg8e9r"
+# BASE_URL = "https://sg.uiuiapi.com"
+# MODEL_ID = "chatgpt-4o-latest"
+
+# modelScope
+API_KEY = env.str("LLM_API_KEY")
+BASE_URL = env.str("LLM_BASE_URL")
+MODEL_ID = env.str("LLM_MODEL_ID")
 # os.environ['TAVILY_API_KEY'] = "YOUR_TAVILY_API_KEY"
 
 print(f"初始化LLM客户端: model={MODEL_ID}, base_url={BASE_URL}")
@@ -228,6 +236,8 @@ for i in range(5): # 设置最大循环次数
         
     tool_name = tool_match.group(1)
     args_str = tool_match.group(2)
+
+    print(f"工具调用: {tool_name}, 参数：{args_str}")
     
     # 更安全地解析参数
     kwargs = {}
@@ -238,6 +248,7 @@ for i in range(5): # 设置最大循环次数
 
     if tool_name in available_tools:
         observation = available_tools[tool_name](**kwargs)
+        print(f"工具: {observation}")
     else:
         observation = f"错误：未定义的工具 '{tool_name}'"
 
